@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>RR Departments Chart</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: #0f1419;
+    color: #e8e8e8;
+    padding: 20px;
+  }
+  h1 { margin: 0 0 8px 0; color: #ffd36b; font-size: 22px; }
+  .sub { color: #8aa; font-size: 13px; margin-bottom: 16px; }
+  .panel {
+    background: #1a2028;
+    border: 1px solid #2a323c;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .config-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .config-row label {
+    font-size: 12px;
+    color: #aac;
+    margin-right: 4px;
+  }
+  input, select, button {
+    background: #252d38;
+    color: #e8e8e8;
+    border: 1px solid #3a4452;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  input[type=text] { width: 280px; }
+  input[type=password] { width: 280px; }
+  button {
+    background: #3a6ea5;
+    cursor: pointer;
+    border-color: #3a6ea5;
+  }
+  button:hover { background: #4a85c5; }
+  button.secondary { background: #2a323c; border-color: #3a4452; }
+  button.secondary:hover { background: #3a4452; }
+  .status {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-top: 10px;
+    display: inline-block;
+  }
+  .status.ok { background: #1f3a26; color: #8fdc8f; }
+  .status.err { background: #3a1f1f; color: #ff8f8f; }
+  .status.info { background: #1f2a3a; color: #8fc0dc; }
+  #chart-wrapper { position: relative; height: 480px; }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .stat-card {
+    background: #252d38;
+    border-radius: 6px;
+    padding: 10px;
+    border-left: 3px solid #3a6ea5;
+  }
+  .stat-card .name { font-size: 11px; color: #aac; }
+  .stat-card .val { font-size: 18px; font-weight: bold; color: #ffd36b; }
+  .stat-card .delta { font-size: 11px; margin-top: 2px; }
+  .delta.up { color: #6fdb6f; }
+  .delta.down { color: #ff6f6f; }
+  .delta.same { color: #888; }
+  details summary {
+    cursor: pointer;
+    color: #8fc0dc;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🏛️ RivalRegions — Department Tracker</h1>
+<div class="sub">Графік оновлюється з даних, що збираються userscript'ом раз на годину</div>
+
+<div class="panel">
+  <details>
+    <summary>⚙️ Налаштування джерела даних</summary>
+    <div style="margin-top: 10px;">
+      <div class="config-row">
+        <label>JSONBin Bin ID:</label>
+        <input type="text" id="bin-id" placeholder="наприклад 65f1a2b3c4d5e6f7g8h9i0j1">
+      </div>
+      <div class="config-row" style="margin-top: 8px;">
+        <label>X-Master-Key:</label>
+        <input type="password" id="api-key" placeholder="$2a$10$...">
+      </div>
+      <div class="config-row" style="margin-top: 8px;">
+        <button id="save-config">Зберегти</button>
+        <button id="load-file" class="secondary">Завантажити JSON файл</button>
+        <input type="file" id="file-input" accept=".json" style="display:none">
+        <button id="clear-config" class="secondary">Очистити</button>
+      </div>
+      <div style="font-size: 11px; color: #888; margin-top: 8px;">
+        Налаштування зберігаються у localStorage цього браузера.
+      </div>
+    </div>
+  </details>
+</div>
+
+<div class="panel">
+  <div class="config-row">
+    <label>Департамент:</label>
+    <select id="dept-select"><option value="ALL">Усі</option></select>
+
+    <label>Метрика:</label>
+    <select id="metric-select">
+      <option value="workers">Робітники</option>
+      <option value="bonusPercent">Бонус (%)</option>
+    </select>
+
+    <label>Період:</label>
+    <select id="range-select">
+      <option value="24">24 години</option>
+      <option value="168" selected>7 днів</option>
+      <option value="720">30 днів</option>
+      <option value="all">Усі дані</option>
+    </select>
+
+    <button id="refresh-btn">🔄 Оновити</button>
+    <span id="status" class="status info">Завантаження...</span>
+  </div>
+</div>
+
+<div class="panel">
+  <div id="chart-wrapper">
+    <canvas id="chart"></canvas>
+  </div>
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="panel" style="font-size: 12px; color: #aac;">
+  <b>Як це працює:</b> Userscript у Violentmonkey парсить сторінку RR раз на годину та надсилає дані на JSONBin.
+  Ця сторінка читає дані з того ж JSONBin та малює графік. Якщо JSONBin не налаштований —
+  можна просто завантажити JSON-файл, який userscript експортує кнопкою "Експорт JSON".
+</div>
+
+<script>
+const LS_KEY = 'rr-chart-config-v1';
+let chartInstance = null;
+let currentHistory = [];
+
+// ================ Config ================
+function loadConfig() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+function saveConfig(cfg) { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
+
+function applyConfigToUI() {
+  const cfg = loadConfig();
+  document.getElementById('bin-id').value = cfg.binId || '';
+  document.getElementById('api-key').value = cfg.apiKey || '';
+}
+
+// ================ Status ================
+function setStatus(type, msg) {
+  const el = document.getElementById('status');
+  el.className = 'status ' + (type === 'ok' ? 'ok' : type === 'err' ? 'err' : 'info');
+  el.textContent = msg;
+}
+
+// ================ Data load ================
+async function fetchFromJsonBin() {
+  const cfg = loadConfig();
+  if (!cfg.binId || !cfg.apiKey) {
+    throw new Error('JSONBin не налаштований. Розкрий "Налаштування джерела даних".');
+  }
+  const resp = await fetch(`https://api.jsonbin.io/v3/b/${cfg.binId}/latest`, {
+    headers: { 'X-Master-Key': cfg.apiKey }
+  });
+  if (!resp.ok) throw new Error(`JSONBin HTTP ${resp.status}`);
+  const json = await resp.json();
+  const rec = json.record || {};
+  if (!Array.isArray(rec.history)) throw new Error('У bin немає поля history[]');
+  return rec.history;
+}
+
+async function loadData() {
+  setStatus('info', 'Завантаження...');
+  try {
+    const history = await fetchFromJsonBin();
+    currentHistory = history;
+    setStatus('ok', `Завантажено ${history.length} записів`);
+    rebuildDeptSelect();
+    drawChart();
+  } catch (e) {
+    setStatus('err', 'Помилка: ' + e.message);
+  }
+}
+
+function loadFromFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const history = Array.isArray(data) ? data : data.history;
+      if (!Array.isArray(history)) throw new Error('Файл не містить history[]');
+      currentHistory = history;
+      setStatus('ok', `Завантажено з файлу: ${history.length} записів`);
+      rebuildDeptSelect();
+      drawChart();
+    } catch (err) {
+      setStatus('err', 'Помилка читання файлу: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ================ Dept selector ================
+function rebuildDeptSelect() {
+  const sel = document.getElementById('dept-select');
+  const prev = sel.value;
+  const names = new Set();
+  currentHistory.forEach(entry => {
+    (entry.departments || []).forEach(d => names.add(d.name || '(без назви)'));
+  });
+  sel.innerHTML = '<option value="ALL">Усі</option>' +
+    [...names].sort().map(n => `<option value="${encodeURIComponent(n)}">${n}</option>`).join('');
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
+// ================ Filtering ================
+function filterByRange(history) {
+  const range = document.getElementById('range-select').value;
+  if (range === 'all') return history;
+  const hours = parseInt(range, 10);
+  const cutoff = Date.now() - hours * 3600 * 1000;
+  return history.filter(e => e.ts >= cutoff);
+}
+
+// ================ Chart ================
+const COLORS = [
+  '#ffd36b','#6fdb6f','#6fb0ff','#ff6fb0','#b06fff','#ffa06f','#6fdbdb',
+  '#db6fdb','#dbdb6f','#a0a0ff','#ff6f6f','#70ddae','#ddae70','#70aedd'
+];
+
+function drawChart() {
+  const deptValue = document.getElementById('dept-select').value;
+  const metric = document.getElementById('metric-select').value;
+  const history = filterByRange(currentHistory).slice().sort((a,b) => a.ts - b.ts);
+
+  // Збираємо дані за департаментами
+  const seriesMap = new Map(); // name -> [{x: ts, y: value}]
+
+  history.forEach(entry => {
+    (entry.departments || []).forEach(d => {
+      const name = d.name || '(без назви)';
+      if (deptValue !== 'ALL' && decodeURIComponent(deptValue) !== name) return;
+      if (!seriesMap.has(name)) seriesMap.set(name, []);
+      seriesMap.get(name).push({ x: entry.ts, y: d[metric] });
+    });
+  });
+
+  const datasets = [...seriesMap.entries()].map(([name, data], i) => ({
+    label: name,
+    data: data,
+    borderColor: COLORS[i % COLORS.length],
+    backgroundColor: COLORS[i % COLORS.length] + '33',
+    tension: 0.25,
+    pointRadius: 2,
+    borderWidth: 2,
+  }));
+
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById('chart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#e8e8e8' }, position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            title: (items) => new Date(items[0].parsed.x).toLocaleString('uk-UA'),
+            label: (it) => `${it.dataset.label}: ${it.parsed.y}${metric === 'bonusPercent' ? '%' : ''}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'yyyy-MM-dd HH:mm' },
+          ticks: { color: '#aac' },
+          grid: { color: '#2a323c' }
+        },
+        y: {
+          ticks: {
+            color: '#aac',
+            callback: (v) => metric === 'bonusPercent' ? v + '%' : v,
+          },
+          grid: { color: '#2a323c' },
+          beginAtZero: metric === 'bonusPercent' ? false : true,
+        }
+      }
+    }
+  });
+
+  renderStats(seriesMap, metric);
+}
+
+function renderStats(seriesMap, metric) {
+  const el = document.getElementById('stats');
+  el.innerHTML = '';
+  [...seriesMap.entries()].forEach(([name, data]) => {
+    if (data.length === 0) return;
+    const last = data[data.length - 1];
+    const first = data[0];
+    const delta = last.y - first.y;
+    const deltaPct = first.y !== 0 ? ((delta / first.y) * 100).toFixed(1) : '—';
+    const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : 'same';
+    const sign = delta > 0 ? '+' : '';
+    const unit = metric === 'bonusPercent' ? '%' : '';
+    el.insertAdjacentHTML('beforeend', `
+      <div class="stat-card">
+        <div class="name">${name}</div>
+        <div class="val">${last.y}${unit}</div>
+        <div class="delta ${cls}">${sign}${delta.toFixed(metric === 'bonusPercent' ? 1 : 0)}${unit} (${sign}${deltaPct}%) за період</div>
+      </div>
+    `);
+  });
+}
+
+// ================ Event wiring ================
+document.getElementById('save-config').addEventListener('click', () => {
+  const binId = document.getElementById('bin-id').value.trim();
+  const apiKey = document.getElementById('api-key').value.trim();
+  saveConfig({ binId, apiKey });
+  setStatus('ok', 'Налаштування збережено');
+  loadData();
+});
+document.getElementById('clear-config').addEventListener('click', () => {
+  localStorage.removeItem(LS_KEY);
+  applyConfigToUI();
+  setStatus('info', 'Налаштування очищено');
+});
+document.getElementById('load-file').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+document.getElementById('file-input').addEventListener('change', (e) => {
+  if (e.target.files[0]) loadFromFile(e.target.files[0]);
+});
+document.getElementById('refresh-btn').addEventListener('click', loadData);
+['dept-select','metric-select','range-select'].forEach(id => {
+  document.getElementById(id).addEventListener('change', drawChart);
+});
+
+// ================ Init ================
+applyConfigToUI();
+const cfg = loadConfig();
+if (cfg.binId && cfg.apiKey) {
+  loadData();
+} else {
+  setStatus('info', 'Налаштуй JSONBin або завантаж JSON-файл');
+}
+</script>
+</body>
+</html>
