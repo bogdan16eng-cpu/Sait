@@ -160,15 +160,18 @@
 
 <script>
 // ============================================================
-// КОНФІГ — тільки Bin ID
-// Бін на jsonbin.io має бути ПУБЛІЧНИМ (Private toggle = OFF)
-// Тоді його можна читати БЕЗ ключа, а писати тільки з Master Key (у userscript)
+// КОНФІГ — впиши свій GitHub username, назву репо і шлях до файлу.
+// Репозиторій має бути ПУБЛІЧНИМ.
+// Для публічного repo raw.githubusercontent.com не вимагає токена.
 // ============================================================
 const CONFIG = {
-  JSONBIN_BIN_ID: '69e9020336566621a8de97c2',
+  GITHUB_OWNER: 'ВСТАВ_USERNAME',
+  GITHUB_REPO:  'ВСТАВ_REPO',
+  GITHUB_BRANCH: 'main',
+  GITHUB_FILE_PATH: 'data.json',
 };
 
-const LS_KEY = 'rr-chart-ui-v2';
+const LS_KEY = 'rr-chart-ui-v3';
 let chartInstance = null;
 let currentHistory = [];
 let selectedDepts = new Set();
@@ -193,27 +196,28 @@ function setStatus(type, msg) {
 }
 
 // ================ Data load ================
-async function fetchFromJsonBin() {
-  if (!CONFIG.JSONBIN_BIN_ID || CONFIG.JSONBIN_BIN_ID.startsWith('ВСТАВ')) {
-    throw new Error('Bin ID не налаштований у index.html (відкрий файл і впиши BIN ID)');
+async function fetchData() {
+  if (!CONFIG.GITHUB_OWNER || CONFIG.GITHUB_OWNER.startsWith('ВСТАВ')) {
+    throw new Error('GitHub не налаштовано у index.html');
   }
-  const resp = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`);
+  // cache-busting через timestamp, щоб свіжі коміти одразу бачити
+  const url = `https://raw.githubusercontent.com/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/${CONFIG.GITHUB_BRANCH}/${CONFIG.GITHUB_FILE_PATH}?_=${Date.now()}`;
+  const resp = await fetch(url, { cache: 'no-store' });
   if (!resp.ok) {
-    if (resp.status === 401 || resp.status === 403) {
-      throw new Error('Доступ заборонено. Зроби бін публічним на jsonbin.io.');
+    if (resp.status === 404) {
+      throw new Error(`Файл ${CONFIG.GITHUB_FILE_PATH} не знайдено у репо (або репо приватний).`);
     }
     throw new Error(`HTTP ${resp.status}`);
   }
   const json = await resp.json();
-  const rec = json.record !== undefined ? json.record : json;
-  if (!rec || !Array.isArray(rec.history)) throw new Error('У bin немає поля history[]');
-  return rec.history;
+  if (!json || !Array.isArray(json.history)) throw new Error('Файл не містить history[]');
+  return json.history;
 }
 
 async function loadData() {
   setStatus('info', 'Завантаження...');
   try {
-    const history = await fetchFromJsonBin();
+    const history = await fetchData();
     currentHistory = history;
     setStatus('ok', `Завантажено ${history.length} записів`);
     rebuildDeptChips();
