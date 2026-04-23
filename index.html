@@ -35,7 +35,7 @@
     color: #aac;
     margin-right: 4px;
   }
-  input, select, button {
+  select, button {
     background: #252d38;
     color: #e8e8e8;
     border: 1px solid #3a4452;
@@ -44,26 +44,58 @@
     font-size: 13px;
     font-family: inherit;
   }
-  input[type=text] { width: 280px; }
-  input[type=password] { width: 280px; }
   button {
     background: #3a6ea5;
     cursor: pointer;
     border-color: #3a6ea5;
   }
   button:hover { background: #4a85c5; }
-  button.secondary { background: #2a323c; border-color: #3a4452; }
-  button.secondary:hover { background: #3a4452; }
   .status {
     padding: 8px 12px;
     border-radius: 6px;
     font-size: 12px;
-    margin-top: 10px;
     display: inline-block;
   }
   .status.ok { background: #1f3a26; color: #8fdc8f; }
   .status.err { background: #3a1f1f; color: #ff8f8f; }
   .status.info { background: #1f2a3a; color: #8fc0dc; }
+
+  /* Мульти-селект чіпами */
+  .dept-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .dept-chip {
+    background: #252d38;
+    border: 1px solid #3a4452;
+    color: #aac;
+    padding: 5px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s;
+  }
+  .dept-chip:hover { border-color: #5a6472; color: #e8e8e8; }
+  .dept-chip.active {
+    background: #3a6ea5;
+    border-color: #4a85c5;
+    color: #fff;
+  }
+  .dept-chip.active:hover { background: #4a85c5; }
+  .dept-chips-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 10px;
+    font-size: 11px;
+  }
+  .dept-chips-actions a {
+    color: #8fc0dc;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
   #chart-wrapper { position: relative; height: 480px; }
   .stats {
     display: grid;
@@ -83,65 +115,39 @@
   .delta.up { color: #6fdb6f; }
   .delta.down { color: #ff6f6f; }
   .delta.same { color: #888; }
-  details summary {
-    cursor: pointer;
-    color: #8fc0dc;
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
 </style>
 </head>
 <body>
 
 <h1>🏛️ RivalRegions — Department Tracker</h1>
-<div class="sub">Графік оновлюється з даних, що збираються userscript'ом раз на годину</div>
+<div class="sub">Публічна статистика по Україні (4307). Дані збираються автоматично раз на 30 хвилин.</div>
 
 <div class="panel">
-  <details>
-    <summary>⚙️ Налаштування джерела даних</summary>
-    <div style="margin-top: 10px;">
-      <div class="config-row">
-        <label>JSONBin Bin ID:</label>
-        <input type="text" id="bin-id" placeholder="наприклад 65f1a2b3c4d5e6f7g8h9i0j1">
-      </div>
-      <div class="config-row" style="margin-top: 8px;">
-        <label>X-Master-Key:</label>
-        <input type="password" id="api-key" placeholder="$2a$10$...">
-      </div>
-      <div class="config-row" style="margin-top: 8px;">
-        <button id="save-config">Зберегти</button>
-        <button id="load-file" class="secondary">Завантажити JSON файл</button>
-        <input type="file" id="file-input" accept=".json" style="display:none">
-        <button id="clear-config" class="secondary">Очистити</button>
-      </div>
-      <div style="font-size: 11px; color: #888; margin-top: 8px;">
-        Налаштування зберігаються у localStorage цього браузера.
-      </div>
+  <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <div style="color: #aac; font-size: 12px;">Оберіть департаменти (клік по чіпах):</div>
+    <div>
+      <button id="refresh-btn">🔄 Оновити</button>
+      <span id="status" class="status info">Завантаження...</span>
     </div>
-  </details>
+  </div>
+  <div class="dept-chips" id="dept-chips"></div>
+  <div class="dept-chips-actions">
+    <a id="select-all">виділити всі</a>
+    <a id="select-none">зняти всі</a>
+  </div>
 </div>
 
 <div class="panel">
   <div class="config-row">
-    <label>Департамент:</label>
-    <select id="dept-select"><option value="ALL">Усі</option></select>
-
-    <label>Метрика:</label>
-    <select id="metric-select">
-      <option value="workers">Робітники</option>
-      <option value="bonusPercent">Бонус (%)</option>
-    </select>
-
     <label>Період:</label>
     <select id="range-select">
+      <option value="0.5">30 хвилин</option>
+      <option value="1">1 година</option>
       <option value="24">24 години</option>
       <option value="168" selected>7 днів</option>
       <option value="720">30 днів</option>
       <option value="all">Усі дані</option>
     </select>
-
-    <button id="refresh-btn">🔄 Оновити</button>
-    <span id="status" class="status info">Завантаження...</span>
   </div>
 </div>
 
@@ -152,28 +158,31 @@
   <div class="stats" id="stats"></div>
 </div>
 
-<div class="panel" style="font-size: 12px; color: #aac;">
-  <b>Як це працює:</b> Userscript у Violentmonkey парсить сторінку RR раз на годину та надсилає дані на JSONBin.
-  Ця сторінка читає дані з того ж JSONBin та малює графік. Якщо JSONBin не налаштований —
-  можна просто завантажити JSON-файл, який userscript експортує кнопкою "Експорт JSON".
-</div>
-
 <script>
-const LS_KEY = 'rr-chart-config-v1';
+// ============================================================
+// КОНФІГ — тільки Bin ID
+// Бін на jsonbin.io має бути ПУБЛІЧНИМ (Private toggle = OFF)
+// Тоді його можна читати БЕЗ ключа, а писати тільки з Master Key (у userscript)
+// ============================================================
+const CONFIG = {
+  JSONBIN_BIN_ID: 'ВСТАВ_СЮДИ_BIN_ID',
+};
+
+const LS_KEY = 'rr-chart-ui-v2';
 let chartInstance = null;
 let currentHistory = [];
+let selectedDepts = new Set();
 
-// ================ Config ================
-function loadConfig() {
+// ================ UI state persistence ================
+function loadUI() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }
   catch (e) { return {}; }
 }
-function saveConfig(cfg) { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
-
-function applyConfigToUI() {
-  const cfg = loadConfig();
-  document.getElementById('bin-id').value = cfg.binId || '';
-  document.getElementById('api-key').value = cfg.apiKey || '';
+function saveUI() {
+  localStorage.setItem(LS_KEY, JSON.stringify({
+    selected: [...selectedDepts],
+    range: document.getElementById('range-select').value,
+  }));
 }
 
 // ================ Status ================
@@ -185,17 +194,19 @@ function setStatus(type, msg) {
 
 // ================ Data load ================
 async function fetchFromJsonBin() {
-  const cfg = loadConfig();
-  if (!cfg.binId || !cfg.apiKey) {
-    throw new Error('JSONBin не налаштований. Розкрий "Налаштування джерела даних".');
+  if (!CONFIG.JSONBIN_BIN_ID || CONFIG.JSONBIN_BIN_ID.startsWith('ВСТАВ')) {
+    throw new Error('Bin ID не налаштований у index.html (відкрий файл і впиши BIN ID)');
   }
-  const resp = await fetch(`https://api.jsonbin.io/v3/b/${cfg.binId}/latest`, {
-    headers: { 'X-Master-Key': cfg.apiKey }
-  });
-  if (!resp.ok) throw new Error(`JSONBin HTTP ${resp.status}`);
+  const resp = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`);
+  if (!resp.ok) {
+    if (resp.status === 401 || resp.status === 403) {
+      throw new Error('Доступ заборонено. Зроби бін публічним на jsonbin.io.');
+    }
+    throw new Error(`HTTP ${resp.status}`);
+  }
   const json = await resp.json();
-  const rec = json.record || {};
-  if (!Array.isArray(rec.history)) throw new Error('У bin немає поля history[]');
+  const rec = json.record !== undefined ? json.record : json;
+  if (!rec || !Array.isArray(rec.history)) throw new Error('У bin немає поля history[]');
   return rec.history;
 }
 
@@ -205,49 +216,52 @@ async function loadData() {
     const history = await fetchFromJsonBin();
     currentHistory = history;
     setStatus('ok', `Завантажено ${history.length} записів`);
-    rebuildDeptSelect();
+    rebuildDeptChips();
     drawChart();
   } catch (e) {
     setStatus('err', 'Помилка: ' + e.message);
   }
 }
 
-function loadFromFile(file) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const data = JSON.parse(e.target.result);
-      const history = Array.isArray(data) ? data : data.history;
-      if (!Array.isArray(history)) throw new Error('Файл не містить history[]');
-      currentHistory = history;
-      setStatus('ok', `Завантажено з файлу: ${history.length} записів`);
-      rebuildDeptSelect();
-      drawChart();
-    } catch (err) {
-      setStatus('err', 'Помилка читання файлу: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
-}
-
-// ================ Dept selector ================
-function rebuildDeptSelect() {
-  const sel = document.getElementById('dept-select');
-  const prev = sel.value;
+// ================ Dept chips (multi-select) ================
+function rebuildDeptChips() {
+  const container = document.getElementById('dept-chips');
   const names = new Set();
   currentHistory.forEach(entry => {
     (entry.departments || []).forEach(d => names.add(d.name || '(без назви)'));
   });
-  sel.innerHTML = '<option value="ALL">Усі</option>' +
-    [...names].sort().map(n => `<option value="${encodeURIComponent(n)}">${n}</option>`).join('');
-  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  const sortedNames = [...names].sort();
+
+  const saved = loadUI();
+  if (saved.selected && Array.isArray(saved.selected) && saved.selected.length > 0) {
+    selectedDepts = new Set(saved.selected.filter(n => names.has(n)));
+    if (selectedDepts.size === 0) selectedDepts = new Set(sortedNames);
+  } else if (selectedDepts.size === 0) {
+    selectedDepts = new Set(sortedNames);
+  }
+
+  container.innerHTML = sortedNames.map(name => {
+    const active = selectedDepts.has(name) ? 'active' : '';
+    return `<div class="dept-chip ${active}" data-name="${encodeURIComponent(name)}">${name}</div>`;
+  }).join('');
+
+  container.querySelectorAll('.dept-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      const name = decodeURIComponent(el.dataset.name);
+      if (selectedDepts.has(name)) selectedDepts.delete(name);
+      else selectedDepts.add(name);
+      el.classList.toggle('active');
+      saveUI();
+      drawChart();
+    });
+  });
 }
 
 // ================ Filtering ================
 function filterByRange(history) {
   const range = document.getElementById('range-select').value;
   if (range === 'all') return history;
-  const hours = parseInt(range, 10);
+  const hours = parseFloat(range);
   const cutoff = Date.now() - hours * 3600 * 1000;
   return history.filter(e => e.ts >= cutoff);
 }
@@ -259,19 +273,16 @@ const COLORS = [
 ];
 
 function drawChart() {
-  const deptValue = document.getElementById('dept-select').value;
-  const metric = document.getElementById('metric-select').value;
   const history = filterByRange(currentHistory).slice().sort((a,b) => a.ts - b.ts);
 
-  // Збираємо дані за департаментами
-  const seriesMap = new Map(); // name -> [{x: ts, y: value}]
+  const seriesMap = new Map();
 
   history.forEach(entry => {
     (entry.departments || []).forEach(d => {
       const name = d.name || '(без назви)';
-      if (deptValue !== 'ALL' && decodeURIComponent(deptValue) !== name) return;
+      if (!selectedDepts.has(name)) return;
       if (!seriesMap.has(name)) seriesMap.set(name, []);
-      seriesMap.get(name).push({ x: entry.ts, y: d[metric] });
+      seriesMap.get(name).push({ x: entry.ts, y: d.workers });
     });
   });
 
@@ -284,6 +295,28 @@ function drawChart() {
     pointRadius: 2,
     borderWidth: 2,
   }));
+
+  // Діапазон по X: заповнюємо всю ширину графіку, точки починаються ЗЛІВА
+  let xMin, xMax;
+  const range = document.getElementById('range-select').value;
+  const now = Date.now();
+
+  if (range !== 'all') {
+    const hours = parseFloat(range);
+    const windowMs = hours * 3600 * 1000;
+    xMax = now;
+    xMin = now - windowMs;
+  } else if (history.length > 0) {
+    xMin = history[0].ts;
+    xMax = Math.max(now, history[history.length - 1].ts);
+    if (xMin === xMax) {
+      xMin -= 15 * 60 * 1000;
+      xMax += 15 * 60 * 1000;
+    }
+  } else {
+    xMin = now - 3600 * 1000;
+    xMax = now;
+  }
 
   if (chartInstance) chartInstance.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
@@ -299,33 +332,32 @@ function drawChart() {
         tooltip: {
           callbacks: {
             title: (items) => new Date(items[0].parsed.x).toLocaleString('uk-UA'),
-            label: (it) => `${it.dataset.label}: ${it.parsed.y}${metric === 'bonusPercent' ? '%' : ''}`,
+            label: (it) => `${it.dataset.label}: ${it.parsed.y}`,
           }
         }
       },
       scales: {
         x: {
           type: 'time',
+          min: xMin,
+          max: xMax,
           time: { tooltipFormat: 'yyyy-MM-dd HH:mm' },
           ticks: { color: '#aac' },
           grid: { color: '#2a323c' }
         },
         y: {
-          ticks: {
-            color: '#aac',
-            callback: (v) => metric === 'bonusPercent' ? v + '%' : v,
-          },
+          ticks: { color: '#aac' },
           grid: { color: '#2a323c' },
-          beginAtZero: metric === 'bonusPercent' ? false : true,
+          beginAtZero: true,
         }
       }
     }
   });
 
-  renderStats(seriesMap, metric);
+  renderStats(seriesMap);
 }
 
-function renderStats(seriesMap, metric) {
+function renderStats(seriesMap) {
   const el = document.getElementById('stats');
   el.innerHTML = '';
   [...seriesMap.entries()].forEach(([name, data]) => {
@@ -336,49 +368,42 @@ function renderStats(seriesMap, metric) {
     const deltaPct = first.y !== 0 ? ((delta / first.y) * 100).toFixed(1) : '—';
     const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : 'same';
     const sign = delta > 0 ? '+' : '';
-    const unit = metric === 'bonusPercent' ? '%' : '';
     el.insertAdjacentHTML('beforeend', `
       <div class="stat-card">
         <div class="name">${name}</div>
-        <div class="val">${last.y}${unit}</div>
-        <div class="delta ${cls}">${sign}${delta.toFixed(metric === 'bonusPercent' ? 1 : 0)}${unit} (${sign}${deltaPct}%) за період</div>
+        <div class="val">${last.y}</div>
+        <div class="delta ${cls}">${sign}${delta} (${sign}${deltaPct}%) за період</div>
       </div>
     `);
   });
 }
 
 // ================ Event wiring ================
-document.getElementById('save-config').addEventListener('click', () => {
-  const binId = document.getElementById('bin-id').value.trim();
-  const apiKey = document.getElementById('api-key').value.trim();
-  saveConfig({ binId, apiKey });
-  setStatus('ok', 'Налаштування збережено');
-  loadData();
-});
-document.getElementById('clear-config').addEventListener('click', () => {
-  localStorage.removeItem(LS_KEY);
-  applyConfigToUI();
-  setStatus('info', 'Налаштування очищено');
-});
-document.getElementById('load-file').addEventListener('click', () => {
-  document.getElementById('file-input').click();
-});
-document.getElementById('file-input').addEventListener('change', (e) => {
-  if (e.target.files[0]) loadFromFile(e.target.files[0]);
-});
 document.getElementById('refresh-btn').addEventListener('click', loadData);
-['dept-select','metric-select','range-select'].forEach(id => {
-  document.getElementById(id).addEventListener('change', drawChart);
+document.getElementById('range-select').addEventListener('change', () => {
+  saveUI();
+  drawChart();
+});
+document.getElementById('select-all').addEventListener('click', () => {
+  document.querySelectorAll('.dept-chip').forEach(el => {
+    el.classList.add('active');
+    selectedDepts.add(decodeURIComponent(el.dataset.name));
+  });
+  saveUI();
+  drawChart();
+});
+document.getElementById('select-none').addEventListener('click', () => {
+  document.querySelectorAll('.dept-chip').forEach(el => el.classList.remove('active'));
+  selectedDepts.clear();
+  saveUI();
+  drawChart();
 });
 
 // ================ Init ================
-applyConfigToUI();
-const cfg = loadConfig();
-if (cfg.binId && cfg.apiKey) {
-  loadData();
-} else {
-  setStatus('info', 'Налаштуй JSONBin або завантаж JSON-файл');
-}
+const savedUI = loadUI();
+if (savedUI.range) document.getElementById('range-select').value = savedUI.range;
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
 </script>
 </body>
 </html>
